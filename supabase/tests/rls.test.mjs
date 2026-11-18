@@ -5,8 +5,9 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const migrationsDir = new URL("../migrations/", import.meta.url).pathname;
+const migrationsDir = fileURLToPath(new URL("../migrations/", import.meta.url));
 const db = new PGlite();
 
 const STUB = `
@@ -139,7 +140,9 @@ await denied("student cannot move own media onto student2's destination", "stude
 await ok("anon sees media of published destination", "anon", "select * from public.media", rows(1));
 await ok("student uploads file to own folder", "student", `insert into storage.objects (bucket_id, name) values ('media', '${U.student}/photo.jpg')`, affected(1));
 await denied("student cannot upload into student2's folder", "student", `insert into storage.objects (bucket_id, name) values ('media', '${U.student2}/photo.jpg')`);
-await denied("visitor cannot upload", "visitor", `insert into storage.objects (bucket_id, name) values ('media', '${U.visitor}/photo.jpg')`);
+await ok("visitor uploads to own folder (anyone signed in may)", "visitor", `insert into storage.objects (bucket_id, name) values ('media', '${U.visitor}/photo.jpg')`, affected(1));
+await denied("visitor cannot upload into student's folder", "visitor", `insert into storage.objects (bucket_id, name) values ('media', '${U.student}/x.jpg')`);
+await denied("anon cannot upload", "anon", `insert into storage.objects (bucket_id, name) values ('media', '${U.visitor}/anon.jpg')`);
 
 console.log("\nRoutes");
 await ok("editor creates route", "editor", `insert into public.routes (slug, title, duration_minutes, status) values ('old-town-food-walk', '{"zh-TW":"舊城小吃散步","en":"Old Town Food Walk"}', 180, 'published')`, affected(1));
@@ -162,10 +165,14 @@ console.log("\nStories");
 const beimen = (await as("super", "select id from public.destinations where slug='beimen-street'")).rows[0].id;
 const story = (title, extra = "") => `insert into public.stories (author_id, destination_id, locale, title, body${extra ? ", status" : ""})
   values ('${U.student}', ${dest}, 'en', '${title}', 'Go early for the pork-ball soup, the queue gets long by noon.'${extra ? `, '${extra}'` : ""})`;
-await denied("visitor cannot submit a story", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body) values ('${U.visitor}', ${dest}, 'en', 'Hi', 'Twenty characters at least here.')`);
+await ok("visitor publishes a story directly", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body, status) values ('${U.visitor}', ${dest}, 'en', 'Hi', 'Twenty characters at least here.', 'published')`, affected(1));
+await ok("…anon sees it", "anon", "select 1 from public.stories where title = 'Hi'", rows(1));
+await denied("visitor cannot attach someone else's photo", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body, status, image_path) values ('${U.visitor}', ${dest}, 'en', 'Pic', 'Twenty characters at least here.', 'published', '${U.student}/photo.jpg')`);
+await ok("visitor attaches their own photo", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body, status, image_path) values ('${U.visitor}', ${dest}, 'en', 'Pic', 'Twenty characters at least here.', 'published', '${U.visitor}/photo.jpg')`, affected(1));
+await ok("visitor deletes their own stories", "visitor", `delete from public.stories where author_id = '${U.visitor}'`, affected(2));
 await ok("student submits a story (waits for review)", "student", story("Best breakfast near the temple"), affected(1));
 await ok("…its status is in_review", "super", "select 1 from public.stories where status = 'in_review'", rows(1));
-await denied("student cannot submit as published", "student", story("Sneaky", "published"));
+await denied("student cannot submit as archived", "student", story("Sneaky", "archived"));
 await denied("student cannot post about an unpublished place", "student", `insert into public.stories (author_id, destination_id, locale, title, body) values ('${U.student}', '${beimen}', 'en', 'Draft place', 'Twenty characters at least here.')`);
 await denied("student cannot post as someone else", "student", `insert into public.stories (author_id, destination_id, locale, title, body) values ('${U.student2}', ${dest}, 'en', 'Fake', 'Twenty characters at least here.')`);
 await denied("too-short body rejected", "student", `insert into public.stories (author_id, destination_id, locale, title, body) values ('${U.student}', ${dest}, 'en', 'Short', 'Too short')`);
@@ -293,6 +300,23 @@ await ok("editor un-publishes the story", "editor", `update public.stories set s
 await ok("…its comments are no longer public", "anon", "select * from public.story_comments", rows(0));
 await ok("deleting a story removes its comments", "editor", `delete from public.stories where id = ${talk}`, affected(1));
 await ok("…no comments left", "super", "select * from public.story_comments", rows(0));
+
+console.log("\nCommunity spots");
+await denied("anon cannot add a spot", "anon", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'en')`);
+await denied("spot outside Taiwan rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 0, 0, 'en')`);
+await denied("spot with someone else's photo rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'en', null, '${U.student}/photo.jpg')`);
+await denied("spot with a disabled language rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'vi')`);
+await ok("visitor adds a spot with a photo", "visitor",
+  `select public.add_community_spot('Grandma noodle stall', 'Tiny stall with the best rice noodles.', 'food', 24.80, 120.97, 'en', 'Beimen St', '${U.visitor}/photo.jpg')`, rows(1));
+const newSpot = "(select destination_id from public.destination_translations where name = 'Grandma noodle stall')";
+await ok("…anon sees the spot, its translation and cover", "anon",
+  `select 1 from public.destinations d join public.destination_translations t on t.destination_id = d.id join public.media m on m.id = d.cover_media_id where d.id = ${newSpot}`, rows(1));
+await ok("…author name is public", "anon", `select 1 from public.author_profiles where id = '${U.visitor}'`, rows(1));
+await ok("…and it can go in a trip", "student2", `select public.add_to_itinerary(${newSpot})`);
+await ok("…and get stories", "student2", `insert into public.stories (author_id, destination_id, locale, title, body, status) values ('${U.student2}', ${newSpot}, 'en', 'Yum', 'Twenty characters at least here.', 'published')`, affected(1));
+await ok("visitor cannot edit the published spot (0 rows)", "visitor", `update public.destinations set category = 'temple' where id = ${newSpot}`, affected(0));
+await ok("editor can archive it", "editor", `update public.destinations set status = 'archived' where id = ${newSpot}`, affected(1));
+await ok("…then the public no longer sees it", "anon", `select 1 from public.destinations where id = ${newSpot}`, rows(0));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

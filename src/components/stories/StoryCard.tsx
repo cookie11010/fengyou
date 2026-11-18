@@ -10,6 +10,7 @@ import type { PublicStory } from "@/data/stories";
 import { cn } from "@/lib/cn";
 import { fill } from "@/lib/format";
 import { StoryComments } from "./StoryComments";
+import { StoryOwnerActions } from "./StoryOwnerActions";
 import { StoryReactions } from "./StoryReactions";
 import { useStoryComments } from "./useStoryComments";
 
@@ -30,6 +31,7 @@ export function StoryCard({ story, locale, t, saveLabels, isExample = false }: P
   const comments = useStoryComments(story);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const panelId = useId();
+  const photo = story.image ?? story.place.image; // the writer's own photo, else the place's
 
   function toggleComments() {
     const opening = !commentsOpen;
@@ -39,11 +41,11 @@ export function StoryCard({ story, locale, t, saveLabels, isExample = false }: P
 
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
-      {story.place.image && (
+      {photo && (
         <div className="relative aspect-[16/9]">
           <Image
-            src={story.place.image.src}
-            alt={story.place.image.alt}
+            src={photo.src}
+            alt={photo.alt}
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             className="object-cover"
@@ -67,6 +69,12 @@ export function StoryCard({ story, locale, t, saveLabels, isExample = false }: P
           {story.authorName && <>{fill(t.by, { name: story.authorName })} · </>}
           <time dateTime={story.publishedAt}>{date}</time>
           {story.locale !== locale && <> · {fill(t.writtenIn, { language: writtenIn })}</>}
+          {!isExample && (
+            <>
+              {" "}
+              <StoryOwnerActions storyId={story.id} authorId={story.authorId} t={t} />
+            </>
+          )}
         </p>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">

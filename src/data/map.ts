@@ -1,7 +1,7 @@
 // Loads destinations for the map: from Supabase when it's configured,
 // otherwise from the local sample data so the site still runs in development.
 import "server-only";
-import { cacheLife } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import type { Locale } from "@/i18n/config";
 import { DESTINATION_COLUMNS, toMapDestination, type DestinationRow } from "@/lib/destinations";
 import { getPublicSupabase } from "@/lib/supabase/public-client";
@@ -13,6 +13,7 @@ export type MapData = { source: "supabase" | "sample"; destinations: MapDestinat
 export async function getMapDestinations(locale: Locale): Promise<MapData> {
   "use cache";
   cacheLife("hours"); // Published places change rarely; refetch at most every hour or so.
+  cacheTag("destinations"); // ...but adding a spot refreshes this right away (see src/app/actions.ts)
 
   const supabase = getPublicSupabase();
   if (!supabase) return { source: "sample", destinations: sampleDestinations(locale) };

@@ -8,6 +8,9 @@
 | `migrations/20261114120100_row_level_security.sql` | Who may read/write which rows (RLS) |
 | `migrations/20261114120200_storage.sql` | The `media` file bucket and its upload rules |
 | `migrations/20261114130000_stories_and_itineraries.sql` | Student stories (with editor review) and personal itineraries |
+| `migrations/20261114140000_story_reactions.sql` | Likes and saves on stories |
+| `migrations/20261114150000_story_comments.sql` | Comments on stories |
+| `migrations/20261118120000_open_community_posting.sql` | Anyone signed in can post stories with photos and add spots (`add_community_spot`) |
 | `config.toml`, `templates/` | Local Supabase settings and the sign-in code email |
 | `tests/rls.test.mjs` | Acts as each role and checks the rules (`npm run test:db`) |
 | `seed.sql` | Local-only sample data: 4 published destinations with map coordinates |
@@ -66,6 +69,10 @@ erDiagram
 | --- | --- | --- | --- | --- | --- |
 | Read published content | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Read own profile | | ✓ | ✓ | ✓ | ✓ |
+| Share stories (live at once), with a photo | | ✓ | ✓ | ✓ | ✓ |
+| Add a spot to the map (`add_community_spot`) | | ✓ | ✓ | ✓ | ✓ |
+| Comment, like, save, keep a trip | | ✓ | ✓ | ✓ | ✓ |
+| Upload photos to their own `media/<user id>/` folder | | ✓ | ✓ | ✓ | ✓ |
 | Draft destinations, translations, media | | | own only | ✓ | ✓ |
 | Publish, review translations | | | | ✓ | ✓ |
 | Manage routes and events | | | | ✓ | ✓ |
@@ -101,8 +108,9 @@ mail viewer at http://127.0.0.1:54324 to read the 6-digit code.
 
 ## Giving someone a role
 
-New accounts are `visitor`s (they can keep an itinerary). To let a student
-share stories or a teacher review them, an admin runs the following in the
+New accounts are `visitor`s. They can already share stories, add spots,
+comment and keep a trip. To let a student draft destinations with full
+translations, or let a teacher take down stories and hide comments, an admin runs the following in the
 Supabase SQL editor (Studio at http://127.0.0.1:54323 locally). The very
 first admin has to be created this way too:
 

@@ -1,9 +1,9 @@
 // Published student stories, for the public Stories page.
 import "server-only";
-import { cacheLife } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import type { Locale } from "@/i18n/config";
 import { DESTINATION_COLUMNS, toMapDestination, type DestinationRow } from "@/lib/destinations";
-import { getPublicSupabase } from "@/lib/supabase/public-client";
+import { getPublicSupabase, mediaUrl } from "@/lib/supabase/public-client";
 import type { MapDestination } from "@/types/content";
 import { exampleStories } from "./example-stories";
 import { sampleDestinations } from "./map";
@@ -15,10 +15,13 @@ export type PublicStory = {
   title: string;
   body: string;
   publishedAt: string;
+  authorId: string | null;
   authorName: string | null;
   likeCount: number;
   commentCount: number;
   place: MapDestination;
+  /** The photo the writer attached, if any (otherwise the card shows the place's photo). */
+  image?: { src: string; alt: string };
   /** Only on example stories: developer-written comments to show the feature. */
   exampleComments?: StoryComment[];
 };
@@ -44,6 +47,7 @@ type StoryRow = {
   author_id: string;
   like_count: number;
   comment_count: number;
+  image_path: string | null;
   destination: DestinationRow | null;
 };
 
@@ -52,18 +56,26 @@ export type StoriesResult = { status: "ok" | "example" | "error"; stories: Publi
 
 export async function getPublishedStories(locale: Locale): Promise<StoriesResult> {
   "use cache";
-  cacheLife("minutes"); // newly approved stories show up within a few minutes
+  cacheLife("minutes");
+  cacheTag("stories"); // posting a story refreshes this right away (see src/app/actions.ts)
 
   const supabase = getPublicSupabase();
   if (!supabase) return { status: "example", stories: buildExampleStories(locale) };
 
-  const { data, error } = await supabase
-    .from("stories")
-    .select(`id, kind, locale, title, body, published_at, author_id, like_count, comment_count, destination:destinations (${DESTINATION_COLUMNS})`)
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
-    .limit(60)
-    .overrideTypes<StoryRow[], { merge: false }>();
+  const query = (columns: string) =>
+    supabase
+      .from("stories")
+      .select(`${columns}, destination:destinations (${DESTINATION_COLUMNS})`)
+      .eq("status", "published")
+      .order("published_at", { ascending: false })
+      .limit(60)
+      .overrideTypes<StoryRow[], { merge: false }>();
+  const columns = "id, kind, locale, title, body, published_at, author_id, like_count, comment_count";
+
+  let { data, error } = await query(`${columns}, image_path`);
+  // Until the 20261118120000 migration is applied, stories have no photo
+  // column. Keep showing stories (without photos) instead of an error.
+  if (error?.message.includes("image_path")) ({ data, error } = await query(columns));
 
   // Don't take the whole page (or the build) down if the database is unreachable.
   if (error) {
@@ -89,9 +101,11 @@ export async function getPublishedStories(locale: Locale): Promise<StoriesResult
         title: row.title,
         body: row.body,
         publishedAt: row.published_at,
+        authorId: row.author_id,
         authorName: nameById.get(row.author_id) ?? null,
         likeCount: row.like_count,
         commentCount: row.comment_count,
+        image: row.image_path ? { src: mediaUrl(row.image_path), alt: row.title } : undefined,
         place,
       },
     ];
@@ -124,6 +138,7 @@ function buildExampleStories(locale: Locale): PublicStory[] {
         title: story.title,
         body: story.body,
         publishedAt: story.publishedAt,
+        authorId: null,
         authorName: null, // the page shows "Example" instead of a student's name
         likeCount: 0, // no made-up popularity
         commentCount: comments.length,

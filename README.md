@@ -2,8 +2,9 @@
 
 A bilingual (繁體中文 / English) guide to Hsinchu, Taiwan, for international
 visitors. Local students find hidden spots, write them up, and visitors use
-them to plan a trip. Every student story is reviewed by a teacher before it's
-published.
+them to plan a trip. Anyone who signs in can share a story with a photo, add a
+place to the map, comment, and save stories and places to their trip. Posts go
+live straight away; editors can take down anything that breaks the rules.
 
 Built with Next.js 16 (App Router), TypeScript, Tailwind CSS v4, Supabase
 (PostgreSQL + auth) and Leaflet with OpenStreetMap.
@@ -45,6 +46,17 @@ http://localhost:54324.
 
 To give an account a role (student contributor, teacher/editor), see
 [supabase/README.md](supabase/README.md).
+
+## Updating the live site
+
+The live site reads from the production Supabase project. When a pull request
+adds a file to `supabase/migrations/`, apply it there **before or together
+with** deploying the code:
+
+```bash
+npx supabase link --project-ref <your-project-ref>   # once
+npx supabase db push
+```
 
 ## Useful commands
 

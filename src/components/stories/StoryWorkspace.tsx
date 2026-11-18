@@ -1,19 +1,31 @@
 "use client";
 
 // Everything on the Stories page that depends on who is signed in:
-//   contributors (students) → share form + their own stories
-//   editors (teachers)      → review queue
+//   anyone signed in   → share form (with an optional photo) + their own stories
+//   editors (teachers) → also the queue of stories still waiting for review
+import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { refreshPublicContent } from "@/app/actions";
 import { useSession } from "@/components/auth/SessionProvider";
 import { localeLabels, locales, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { cn } from "@/lib/cn";
 import { fill } from "@/lib/format";
+import { mediaUrl } from "@/lib/supabase/public-client";
+import { checkImage, IMAGE_TYPES, removeImage, uploadImage } from "@/lib/upload";
 
 type Place = { id: string; name: string };
 type Status = "draft" | "in_review" | "published" | "archived";
-type OwnStory = { id: string; title: string; status: Status; destination_id: string; created_at: string };
+type OwnStory = {
+  id: string;
+  title: string;
+  status: Status;
+  destination_id: string;
+  created_at: string;
+  image_path: string | null;
+};
 type QueueStory = OwnStory & { body: string; kind: "story" | "tip"; locale: string; author_id: string };
 
 type Props = { locale: Locale; places: Place[]; t: Dictionary["stories"]; authT: Dictionary["auth"] };
@@ -41,20 +53,12 @@ export function StoryWorkspace({ locale, places, t, authT }: Props) {
     );
   }
 
-  if (!role) return null; // profile still loading
-  const canWrite = role === "contributor" || role === "editor" || role === "admin";
   const canReview = role === "editor" || role === "admin";
 
   return (
     <div className="space-y-6">
       {canReview && <ReviewQueue places={places} t={t} />}
-      {canWrite ? (
-        <ComposerAndMine locale={locale} places={places} t={t} />
-      ) : (
-        <Panel title={t.shareTitle}>
-          <p className="text-muted">{t.contributorsOnly}</p>
-        </Panel>
-      )}
+      <ComposerAndMine locale={locale} places={places} t={t} />
     </div>
   );
 }
@@ -72,16 +76,20 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 const statusLabel = (t: Dictionary["stories"], s: Status) =>
   ({ draft: t.statusDraft, in_review: t.statusInReview, published: t.statusPublished, archived: t.statusArchived })[s];
 
-/* ---------------- Student: share form + "My stories" ---------------- */
+/* ---------------- Share form + "My stories" ---------------- */
 
 function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[]; t: Dictionary["stories"] }) {
   const { supabase, user } = useSession();
+  const router = useRouter();
   const [mine, setMine] = useState<OwnStory[]>([]);
   const [placeId, setPlaceId] = useState("");
   const [kind, setKind] = useState<"story" | "tip">("story");
   const [writtenIn, setWrittenIn] = useState<Locale>(locale);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [fileKey, setFileKey] = useState(0); // changing it resets the file input
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -89,7 +97,7 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     if (!supabase || !user) return [];
     const { data } = await supabase
       .from("stories")
-      .select("id, title, status, destination_id, created_at")
+      .select("id, title, status, destination_id, created_at, image_path")
       .eq("author_id", user.id)
       .order("created_at", { ascending: false });
     return (data as OwnStory[]) ?? [];
@@ -104,11 +112,47 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     };
   }, [fetchMine]);
 
+  // Free the preview's memory when it's replaced or the form goes away.
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  function clearPhoto() {
+    setPhoto(null);
+    setPreview(null);
+    setFileKey((k) => k + 1);
+  }
+
+  function pickPhoto(file: File | undefined) {
+    setMessage(null);
+    if (!file) return clearPhoto();
+    const problem = checkImage(file);
+    if (problem) {
+      clearPhoto();
+      setMessage({ ok: false, text: problem === "type" ? t.photoWrongType : t.photoTooBig });
+      return;
+    }
+    setPhoto(file);
+    setPreview(URL.createObjectURL(file));
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase || !user) return;
     setBusy(true);
     setMessage(null);
+
+    let imagePath: string | null = null;
+    try {
+      if (photo) imagePath = await uploadImage(supabase, user.id, photo);
+    } catch (err) {
+      setBusy(false);
+      setMessage({ ok: false, text: fill(t.submitFailed, { message: (err as Error).message }) });
+      return;
+    }
+
     const { error } = await supabase.from("stories").insert({
       author_id: user.id,
       destination_id: placeId,
@@ -116,22 +160,36 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
       locale: writtenIn,
       title: title.trim(),
       body: body.trim(),
-      status: "in_review",
+      image_path: imagePath,
+      status: "published",
     });
-    setBusy(false);
     if (error) {
+      await removeImage(supabase, imagePath); // don't leave an unused file behind
+      setBusy(false);
       setMessage({ ok: false, text: fill(t.submitFailed, { message: error.message }) });
       return;
     }
+
+    // Show the new story in the list for everyone right away.
+    await refreshPublicContent(["stories"]);
+    router.refresh();
+    setBusy(false);
     setMessage({ ok: true, text: t.submitted });
     setTitle("");
     setBody("");
+    clearPhoto();
     void loadMine();
   }
 
-  async function remove(id: string) {
+  async function remove(story: OwnStory) {
     if (!supabase || !window.confirm(t.confirmDelete)) return;
-    await supabase.from("stories").delete().eq("id", id);
+    const { error } = await supabase.from("stories").delete().eq("id", story.id);
+    if (error) return;
+    await removeImage(supabase, story.image_path);
+    if (story.status === "published") {
+      await refreshPublicContent(["stories"]);
+      router.refresh();
+    }
     void loadMine();
   }
 
@@ -142,15 +200,23 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
       <Panel title={t.shareTitle}>
         <p className="text-sm text-muted">{t.shareIntro}</p>
         <form onSubmit={submit} className="mt-4 space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium">{t.place}</span>
-            <select required value={placeId} onChange={(e) => setPlaceId(e.target.value)} className={field}>
-              <option value="">{t.choosePlace}</option>
-              {places.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </label>
+          <div>
+            <label className="block">
+              <span className="text-sm font-medium">{t.place}</span>
+              <select required value={placeId} onChange={(e) => setPlaceId(e.target.value)} className={field}>
+                <option value="">{t.choosePlace}</option>
+                {places.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+            <Link
+              href={`/${locale}/spots#add-spot`}
+              className="mt-1 inline-block text-xs font-medium text-brand-700 underline-offset-2 hover:underline"
+            >
+              {t.placeMissing}
+            </Link>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium">{t.kind}</span>
@@ -186,6 +252,32 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
             />
             <span id="story-body-hint" className="mt-1 block text-xs text-muted">{t.bodyHint}</span>
           </label>
+
+          <div>
+            <label className="block">
+              <span className="text-sm font-medium">{t.photo}</span>
+              <input
+                key={fileKey}
+                type="file"
+                accept={IMAGE_TYPES.join(",")}
+                onChange={(e) => pickPhoto(e.target.files?.[0])}
+                aria-describedby="story-photo-hint"
+                className="mt-1 block w-full text-sm text-muted file:mr-3 file:min-h-10 file:rounded-full file:border-0 file:bg-sand file:px-4 file:text-sm file:font-medium file:text-ink hover:file:bg-brand-50"
+              />
+              <span id="story-photo-hint" className="mt-1 block text-xs text-muted">{t.photoHint}</span>
+            </label>
+            {preview && (
+              <div className="mt-3 flex items-start gap-3">
+                {/* A local blob: URL, so a plain <img> rather than next/image. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={preview} alt={t.photoPreview} className="h-24 w-32 rounded-xl object-cover ring-1 ring-line" />
+                <button type="button" onClick={clearPhoto} className="text-sm text-brand-700 hover:underline">
+                  {t.photoRemove}
+                </button>
+              </div>
+            )}
+          </div>
+
           <button type="submit" disabled={busy} className={cn(button, "bg-brand-600 text-white hover:bg-brand-700")}>
             {busy ? t.submitting : t.submit}
           </button>
@@ -201,8 +293,13 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
         <Panel title={t.myStories}>
           <ul className="divide-y divide-line">
             {mine.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                <div className="min-w-0">
+              <li key={s.id} className="flex flex-wrap items-center gap-3 py-3">
+                {s.image_path && (
+                  <div className="relative size-12 shrink-0 overflow-hidden rounded-lg">
+                    <Image src={mediaUrl(s.image_path)} alt="" fill sizes="48px" className="object-cover" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-ink">{s.title}</p>
                   <p className="text-xs text-muted">{placeName(s.destination_id)}</p>
                 </div>
@@ -210,7 +307,7 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
                   <span className={cn("rounded-full px-3 py-1 text-xs font-medium", s.status === "published" ? "bg-brand-50 text-brand-700" : "bg-sand text-muted")}>
                     {statusLabel(t, s.status)}
                   </span>
-                  <button type="button" onClick={() => void remove(s.id)} className="text-sm text-brand-700 hover:underline">
+                  <button type="button" onClick={() => void remove(s)} className="text-sm text-brand-700 hover:underline">
                     {t.delete}
                   </button>
                 </div>
@@ -224,9 +321,12 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
 }
 
 /* ---------------- Editor: review queue ---------------- */
+// New stories are published straight away now, so this only holds stories
+// sent in before that change (or drafts an editor moved back for review).
 
 function ReviewQueue({ places, t }: { places: Place[]; t: Dictionary["stories"] }) {
   const { supabase } = useSession();
+  const router = useRouter();
   const [queue, setQueue] = useState<QueueStory[]>([]);
   const [authors, setAuthors] = useState<Map<string, string>>(new Map());
   const [notice, setNotice] = useState<string | null>(null);
@@ -235,7 +335,7 @@ function ReviewQueue({ places, t }: { places: Place[]; t: Dictionary["stories"] 
     if (!supabase) return { rows: [] as QueueStory[], names: new Map<string, string>() };
     const { data } = await supabase
       .from("stories")
-      .select("id, title, body, kind, locale, status, destination_id, author_id, created_at")
+      .select("id, title, body, kind, locale, status, destination_id, author_id, created_at, image_path")
       .eq("status", "in_review")
       .order("created_at");
     const rows = (data as QueueStory[]) ?? [];
@@ -246,11 +346,11 @@ function ReviewQueue({ places, t }: { places: Place[]; t: Dictionary["stories"] 
     const names = new Map((profiles ?? []).map((p) => [p.id as string, p.display_name as string]));
     return { rows, names };
   }, [supabase]);
-  const applyQueue = ({ rows, names }: Awaited<ReturnType<typeof fetchQueue>>) => {
+  const load = async () => {
+    const { rows, names } = await fetchQueue();
     setQueue(rows);
     setAuthors(names);
   };
-  const load = async () => applyQueue(await fetchQueue());
 
   useEffect(() => {
     let active = true;
@@ -268,9 +368,15 @@ function ReviewQueue({ places, t }: { places: Place[]; t: Dictionary["stories"] 
   async function decide(id: string, status: "published" | "archived") {
     if (!supabase) return;
     const { error } = await supabase.from("stories").update({ status }).eq("id", id);
-    if (!error && status === "published") setNotice(t.approved);
+    if (!error && status === "published") {
+      await refreshPublicContent(["stories"]);
+      router.refresh();
+      setNotice(t.approved);
+    }
     void load();
   }
+
+  if (queue.length === 0 && !notice) return null; // nothing to review: keep the sidebar short
 
   return (
     <Panel title={t.reviewQueue}>

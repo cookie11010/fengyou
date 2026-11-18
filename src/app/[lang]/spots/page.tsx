@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AddSpotForm } from "@/components/map/AddSpotForm";
 import { DestinationExplorer } from "@/components/map/DestinationExplorer";
 import { Container } from "@/components/ui/Container";
 import { getMapDestinations } from "@/data/map";
@@ -39,6 +40,10 @@ export default async function SpotsPage() {
             empty: t.empty,
           }}
         />
+      </div>
+
+      <div className="mt-10">
+        <AddSpotForm locale={locale} categories={dict.categories} t={t} storiesT={dict.stories} authT={dict.auth} />
       </div>
     </Container>
   );

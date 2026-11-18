@@ -30,7 +30,7 @@ const iconButton =
   "inline-flex size-10 items-center justify-center rounded-full text-muted hover:bg-sand hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent";
 
 export function ItineraryEditor({ locale, places, t, authT }: Props) {
-  const { status, supabase, user, refreshSaved } = useSession();
+  const { status, supabase, user, savedIds, refreshSaved } = useSession();
   const [saved, setSaved] = useState<Trip | null>(null);
   const [draft, setDraft] = useState<Trip | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -78,6 +78,26 @@ export function ItineraryEditor({ locale, places, t, authT }: Props) {
       active = false;
     };
   }, [status, fetchTrip, apply]);
+
+  // A place added elsewhere on this page (e.g. from a saved story) is already
+  // stored in the database: show it here too, without touching unsaved edits.
+  // (Adjusts state during render when savedIds changes, as React recommends
+  // instead of an effect.)
+  const [seenSavedIds, setSeenSavedIds] = useState(savedIds);
+  if (seenSavedIds !== savedIds && saved && draft) {
+    setSeenSavedIds(savedIds);
+    const known = new Set([...saved.stops, ...draft.stops].map((s) => s.place.id));
+    const newStops = [...savedIds]
+      .filter((id) => !known.has(id))
+      .flatMap((id): Stop[] => {
+        const place = places.find((p) => p.id === id);
+        return place ? [{ place, note: "" }] : [];
+      });
+    if (newStops.length > 0) {
+      setSaved({ ...saved, stops: [...saved.stops, ...newStops] });
+      setDraft({ ...draft, stops: [...draft.stops, ...newStops] });
+    }
+  }
 
   const dirty = useMemo(() => JSON.stringify(saved) !== JSON.stringify(draft), [saved, draft]);
 
