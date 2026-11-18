@@ -7,7 +7,8 @@ import { useState } from "react";
 import { refreshPublicContent } from "@/app/actions";
 import { useSession } from "@/components/auth/SessionProvider";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { removeImage } from "@/lib/upload";
+import type { StoryImage } from "@/lib/supabase/public-client";
+import { removeImages } from "@/lib/upload";
 
 type Props = { storyId: string; authorId: string | null; t: Dictionary["stories"] };
 
@@ -28,9 +29,9 @@ export function StoryOwnerActions({ storyId, authorId, t }: Props) {
     setBusy(true);
     let ok: boolean;
     if (isAuthor) {
-      const { data } = await supabase.from("stories").delete().eq("id", storyId).select("image_path").maybeSingle();
+      const { data } = await supabase.from("stories").delete().eq("id", storyId).select("images").maybeSingle();
       ok = !!data;
-      if (data) await removeImage(supabase, (data as { image_path: string | null }).image_path);
+      if (data) await removeImages(supabase, "story-images", (data as { images: StoryImage[] }).images.map((i) => i.path));
     } else {
       const { error } = await supabase.from("stories").update({ status: "archived" }).eq("id", storyId);
       ok = !error;

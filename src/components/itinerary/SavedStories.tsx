@@ -10,7 +10,7 @@ import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { DESTINATION_COLUMNS, toMapDestination, type DestinationRow } from "@/lib/destinations";
 import { fill } from "@/lib/format";
-import { mediaUrl } from "@/lib/supabase/public-client";
+import { mediaUrl, type StoryImage } from "@/lib/supabase/public-client";
 import type { MapDestination } from "@/types/content";
 import { SaveToItineraryButton } from "./SaveToItineraryButton";
 
@@ -20,7 +20,7 @@ type Row = {
     title: string;
     body: string;
     locale: string;
-    image_path: string | null;
+    images: StoryImage[];
     destination: DestinationRow | null;
   } | null;
 };
@@ -42,7 +42,7 @@ export function SavedStories({ locale, t, storiesT, saveT }: Props) {
     // RLS returns only this user's reactions, and only published stories.
     const { data } = await supabase
       .from("story_reactions")
-      .select(`created_at, story:stories (id, title, body, locale, image_path, destination:destinations (${DESTINATION_COLUMNS}))`)
+      .select(`created_at, story:stories (id, title, body, locale, images, destination:destinations (${DESTINATION_COLUMNS}))`)
       .eq("kind", "save")
       .order("created_at", { ascending: false })
       .overrideTypes<Row[], { merge: false }>();
@@ -50,7 +50,7 @@ export function SavedStories({ locale, t, storiesT, saveT }: Props) {
       const s = r.story;
       const place = s?.destination ? toMapDestination(s.destination, locale) : null;
       if (!s || !place) return [];
-      return [{ id: s.id, title: s.title, body: s.body, locale: s.locale, image: s.image_path ? mediaUrl(s.image_path) : place.image?.src, place }];
+      return [{ id: s.id, title: s.title, body: s.body, locale: s.locale, image: s.images[0] ? mediaUrl(s.images[0].path, "story-images") : place.image?.src, place }];
     });
   }, [supabase, user, locale]);
 

@@ -21,9 +21,16 @@ export function getPublicSupabase(): SupabaseClient | null {
   return client;
 }
 
-/** Public URL of a file in the 'media' Storage bucket (external URLs pass through). */
-export function mediaUrl(storagePath: string): string {
+/** Public URL of a file in a public Storage bucket (external URLs pass through). */
+export function mediaUrl(storagePath: string, bucket: "media" | "story-images" = "media"): string {
   if (/^https?:\/\//.test(storagePath)) return storagePath;
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  return `${base}/storage/v1/object/public/media/${storagePath.split("/").map(encodeURIComponent).join("/")}`;
+  return `${base}/storage/v1/object/public/${bucket}/${storagePath.split("/").map(encodeURIComponent).join("/")}`;
 }
+
+/** A story's photos, as stored in stories.images, ready for <Image>. */
+export function storyPhotos(images: StoryImage[] | null | undefined, fallbackAlt: string): { src: string; alt: string }[] {
+  return (images ?? []).map((i) => ({ src: mediaUrl(i.path, "story-images"), alt: i.alt ?? fallbackAlt }));
+}
+
+export type StoryImage = { path: string; alt: string | null };

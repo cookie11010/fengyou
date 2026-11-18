@@ -3,7 +3,7 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import type { Locale } from "@/i18n/config";
 import { DESTINATION_COLUMNS, toMapDestination, type DestinationRow } from "@/lib/destinations";
-import { getPublicSupabase, mediaUrl } from "@/lib/supabase/public-client";
+import { getPublicSupabase, storyPhotos, type StoryImage } from "@/lib/supabase/public-client";
 import type { MapDestination } from "@/types/content";
 import { exampleStories } from "./example-stories";
 import { sampleDestinations } from "./map";
@@ -20,8 +20,8 @@ export type PublicStory = {
   likeCount: number;
   commentCount: number;
   place: MapDestination;
-  /** The photo the writer attached, if any (otherwise the card shows the place's photo). */
-  image?: { src: string; alt: string };
+  /** Photos the writer attached (up to 3). Without any, the card shows the place's photo. */
+  images: { src: string; alt: string }[];
   /** Only on example stories: developer-written comments to show the feature. */
   exampleComments?: StoryComment[];
 };
@@ -47,7 +47,7 @@ type StoryRow = {
   author_id: string;
   like_count: number;
   comment_count: number;
-  image_path: string | null;
+  images: StoryImage[];
   destination: DestinationRow | null;
 };
 
@@ -62,20 +62,13 @@ export async function getPublishedStories(locale: Locale): Promise<StoriesResult
   const supabase = getPublicSupabase();
   if (!supabase) return { status: "example", stories: buildExampleStories(locale) };
 
-  const query = (columns: string) =>
-    supabase
-      .from("stories")
-      .select(`${columns}, destination:destinations (${DESTINATION_COLUMNS})`)
-      .eq("status", "published")
-      .order("published_at", { ascending: false })
-      .limit(60)
-      .overrideTypes<StoryRow[], { merge: false }>();
-  const columns = "id, kind, locale, title, body, published_at, author_id, like_count, comment_count";
-
-  let { data, error } = await query(`${columns}, image_path`);
-  // Until the 20261118120000 migration is applied, stories have no photo
-  // column. Keep showing stories (without photos) instead of an error.
-  if (error?.message.includes("image_path")) ({ data, error } = await query(columns));
+  const { data, error } = await supabase
+    .from("stories")
+    .select(`id, kind, locale, title, body, published_at, author_id, like_count, comment_count, images, destination:destinations (${DESTINATION_COLUMNS})`)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(60)
+    .overrideTypes<StoryRow[], { merge: false }>();
 
   // Don't take the whole page (or the build) down if the database is unreachable.
   if (error) {
@@ -105,7 +98,7 @@ export async function getPublishedStories(locale: Locale): Promise<StoriesResult
         authorName: nameById.get(row.author_id) ?? null,
         likeCount: row.like_count,
         commentCount: row.comment_count,
-        image: row.image_path ? { src: mediaUrl(row.image_path), alt: row.title } : undefined,
+        images: storyPhotos(row.images, row.title),
         place,
       },
     ];
@@ -141,6 +134,7 @@ function buildExampleStories(locale: Locale): PublicStory[] {
         authorId: null,
         authorName: null, // the page shows "Example" instead of a student's name
         likeCount: 0, // no made-up popularity
+        images: [],
         commentCount: comments.length,
         exampleComments: comments,
         place,

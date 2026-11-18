@@ -13,7 +13,7 @@ import { localeLabels, locales, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { cn } from "@/lib/cn";
 import { fill } from "@/lib/format";
-import { checkImage, IMAGE_TYPES, removeImage, uploadImage } from "@/lib/upload";
+import { checkImage, IMAGE_TYPES, removeImages, uploadImage } from "@/lib/upload";
 import type { SpotCategory } from "@/types/content";
 
 const LocationPicker = dynamic(() => import("./LocationPicker"), {
@@ -107,7 +107,7 @@ export function AddSpotForm({ locale, categories, t, storiesT, authT }: Props) {
 
     let imagePath: string | null = null;
     try {
-      if (photo) imagePath = await uploadImage(supabase, user.id, photo);
+      if (photo) imagePath = await uploadImage(supabase, "media", user.id, photo);
     } catch (err) {
       setBusy(false);
       setMessage({ ok: false, text: fill(t.addFailed, { message: (err as Error).message }) });
@@ -125,7 +125,7 @@ export function AddSpotForm({ locale, categories, t, storiesT, authT }: Props) {
       p_image_path: imagePath,
     });
     if (error) {
-      await removeImage(supabase, imagePath);
+      await removeImages(supabase, "media", [imagePath]);
       setBusy(false);
       setMessage({ ok: false, text: fill(t.addFailed, { message: error.message }) });
       return;

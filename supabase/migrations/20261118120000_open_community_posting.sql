@@ -1,25 +1,138 @@
 -- =============================================================================
--- FengYou: open community posting
+-- FengYou: story photos + open community posting
 --
--- Until now only student contributors could write, and every story waited
--- for a teacher. From here on, ANYONE WHO IS SIGNED IN can:
---   * share a story or tip, with an optional photo. It is public at once.
+-- Part 1 records the story-photo setup that was first made by hand in the
+-- production database (stories.images, the 'story-images' bucket and its
+-- checks), so a fresh database built from these files matches production.
+-- Every statement in part 1 is safe to run on a database that already has it.
+--
+-- Part 2 opens posting up. ANYONE WHO IS SIGNED IN can now:
+--   * share a story or tip with up to 3 photos. It is public at once.
 --   * add a new spot to the map (with an optional cover photo). Public at once.
---   * upload photos into their own folder of the 'media' bucket.
 -- Editors keep the final say: they can still archive any story or spot and
--- hide any comment, so the moderation tools all keep working.
+-- hide any comment.
 -- =============================================================================
 
 
--- -----------------------------------------------------------------------------
--- Stories: optional photo, and anyone signed in may publish directly
--- -----------------------------------------------------------------------------
-alter table public.stories
-  add column image_path text
-    -- '<uploader uuid>/<file name>' inside the 'media' bucket
-    check (image_path ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9._-]{1,120}$');
+-- =============================================================================
+-- Part 1: story photos (as already in production)
+-- =============================================================================
 
-drop policy "Contributors submit stories about published places" on public.stories;
+-- Up to 3 photos per story: [{"path": "<author id>/<uuid>.jpg", "alt": "..."}]
+alter table public.stories
+  add column if not exists images jsonb not null default '[]'::jsonb;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'stories_images_check'
+                 and conrelid = 'public.stories'::regclass) then
+    alter table public.stories add constraint stories_images_check
+      check (jsonb_typeof(images) = 'array' and jsonb_array_length(images) <= 3);
+  end if;
+end;
+$$;
+
+-- Each photo must be a file the author uploaded to their own folder. Also
+-- drops any extra keys, so only {path, alt} is ever stored.
+create or replace function public.check_story_images()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  item jsonb;
+  cleaned jsonb := '[]'::jsonb;
+begin
+  for item in select * from jsonb_array_elements(new.images) loop
+    if jsonb_typeof(item) <> 'object'
+       or coalesce(item->>'path', '') !~ ('^' || new.author_id::text || '/[0-9a-f-]{36}\.(jpg|png|webp)$')
+    then
+      raise exception 'Each photo must be one of your own uploaded files.' using errcode = 'check_violation';
+    end if;
+    if length(coalesce(item->>'alt', '')) > 200 then
+      raise exception 'A photo description can be at most 200 characters.' using errcode = 'check_violation';
+    end if;
+    cleaned := cleaned || jsonb_build_array(jsonb_build_object(
+      'path', item->>'path',
+      'alt',  nullif(trim(coalesce(item->>'alt', '')), '')
+    ));
+  end loop;
+  new.images := cleaned;
+  return new;
+end;
+$$;
+
+drop trigger if exists stories_check_images on public.stories;
+create trigger stories_check_images
+  before insert or update of images, author_id on public.stories
+  for each row execute function public.check_story_images();
+
+-- At most 5 stories per person waiting for review (only matters for stories
+-- that are sent for review rather than published straight away).
+create or replace function public.limit_pending_stories()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status = 'in_review'
+     and (tg_op = 'INSERT' or old.status is distinct from 'in_review')
+     and not public.is_editor()
+     and (select count(*) from public.stories s
+          where s.author_id = new.author_id and s.status = 'in_review' and s.id <> new.id) >= 5
+  then
+    raise exception 'You already have 5 stories waiting for review. Please wait for a teacher to review them.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists stories_limit_pending on public.stories;
+create trigger stories_limit_pending
+  before insert or update of status on public.stories
+  for each row execute function public.limit_pending_stories();
+
+-- The bucket for story photos: public to view, 5 MB per photo.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('story-images', 'story-images', true, 5 * 1024 * 1024, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+drop policy if exists "Users upload story photos to their own folder" on storage.objects;
+create policy "Users upload story photos to their own folder"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'story-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "Users see their own story photo files" on storage.objects;
+create policy "Users see their own story photo files"
+  on storage.objects for select
+  to authenticated
+  using (bucket_id = 'story-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "Users delete their own story photos" on storage.objects;
+create policy "Users delete their own story photos"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'story-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "Editors manage story photos" on storage.objects;
+create policy "Editors manage story photos"
+  on storage.objects for all
+  to authenticated
+  using (bucket_id = 'story-images' and (select public.is_editor()))
+  with check (bucket_id = 'story-images' and (select public.is_editor()));
+
+
+-- =============================================================================
+-- Part 2: open community posting
+-- =============================================================================
+
+-- Stories: anyone signed in may publish directly (photos are checked above).
+-- The old insert policy had a different name in this repo and in production.
+drop policy if exists "Contributors submit stories about published places" on public.stories;
+drop policy if exists "Signed-in users submit stories about published places" on public.stories;
 
 create policy "Signed-in users share stories about published places"
   on public.stories for insert
@@ -28,15 +141,12 @@ create policy "Signed-in users share stories about published places"
     author_id = (select auth.uid())
     and status in ('draft', 'in_review', 'published')
     and exists (select 1 from public.destinations d where d.id = destination_id and d.status = 'published')
-    -- a photo must be one the author uploaded themselves
-    and (image_path is null or split_part(image_path, '/', 1) = (select auth.uid())::text)
   );
 
-
--- -----------------------------------------------------------------------------
--- Storage: every signed-in user may upload into their own folder
--- -----------------------------------------------------------------------------
-drop policy "Contributors upload to their own media folder" on storage.objects;
+-- Spot cover photos go in the 'media' bucket: any signed-in user may upload
+-- into their own folder there too.
+drop policy if exists "Contributors upload to their own media folder" on storage.objects;
+drop policy if exists "Signed-in users upload to their own media folder" on storage.objects;
 
 create policy "Signed-in users upload to their own media folder"
   on storage.objects for insert
@@ -75,7 +185,7 @@ as
 -- satisfy. This function does all of it atomically after validating every
 -- input itself. SECURITY DEFINER, so every check below matters.
 -- Returns the new destination's id.
-create function public.add_community_spot(
+create or replace function public.add_community_spot(
   p_name       text,
   p_summary    text,
   p_category   public.destination_category,
@@ -118,10 +228,8 @@ begin
   if not exists (select 1 from public.locales l where l.code = p_locale and l.is_enabled) then
     raise exception 'Unsupported language' using errcode = '22023';
   end if;
-  if p_image_path is not null and (
-       split_part(p_image_path, '/', 1) <> v_user::text
-       or p_image_path !~ '^[0-9a-f-]{36}/[A-Za-z0-9._-]{1,120}$'
-     ) then
+  if p_image_path is not null
+     and p_image_path !~ ('^' || v_user::text || '/[0-9a-f-]{36}\.(jpg|png|webp)$') then
     raise exception 'The photo must be one you uploaded' using errcode = '42501';
   end if;
   -- Simple flood protection.

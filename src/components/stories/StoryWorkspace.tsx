@@ -1,7 +1,7 @@
 "use client";
 
 // Everything on the Stories page that depends on who is signed in:
-//   anyone signed in   → share form (with an optional photo) + their own stories
+//   anyone signed in   → share form (with up to 3 photos) + their own stories
 //   editors (teachers) → also the queue of stories still waiting for review
 import Image from "next/image";
 import Link from "next/link";
@@ -13,8 +13,8 @@ import { localeLabels, locales, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { cn } from "@/lib/cn";
 import { fill } from "@/lib/format";
-import { mediaUrl } from "@/lib/supabase/public-client";
-import { checkImage, IMAGE_TYPES, removeImage, uploadImage } from "@/lib/upload";
+import { mediaUrl, type StoryImage } from "@/lib/supabase/public-client";
+import { checkImage, IMAGE_TYPES, removeImages, STORY_MAX_PHOTOS, uploadImage } from "@/lib/upload";
 
 type Place = { id: string; name: string };
 type Status = "draft" | "in_review" | "published" | "archived";
@@ -24,8 +24,9 @@ type OwnStory = {
   status: Status;
   destination_id: string;
   created_at: string;
-  image_path: string | null;
+  images: StoryImage[];
 };
+type PickedPhoto = { file: File; preview: string; alt: string };
 type QueueStory = OwnStory & { body: string; kind: "story" | "tip"; locale: string; author_id: string };
 
 type Props = { locale: Locale; places: Place[]; t: Dictionary["stories"]; authT: Dictionary["auth"] };
@@ -87,8 +88,7 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
   const [writtenIn, setWrittenIn] = useState<Locale>(locale);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [fileKey, setFileKey] = useState(0); // changing it resets the file input
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -97,7 +97,7 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     if (!supabase || !user) return [];
     const { data } = await supabase
       .from("stories")
-      .select("id, title, status, destination_id, created_at, image_path")
+      .select("id, title, status, destination_id, created_at, images")
       .eq("author_id", user.id)
       .order("created_at", { ascending: false });
     return (data as OwnStory[]) ?? [];
@@ -112,30 +112,35 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     };
   }, [fetchMine]);
 
-  // Free the preview's memory when it's replaced or the form goes away.
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
-  function clearPhoto() {
-    setPhoto(null);
-    setPreview(null);
+  function clearPhotos() {
+    photos.forEach((p) => URL.revokeObjectURL(p.preview)); // free the previews' memory
+    setPhotos([]);
     setFileKey((k) => k + 1);
   }
 
-  function pickPhoto(file: File | undefined) {
+  function removePhoto(index: number) {
+    URL.revokeObjectURL(photos[index].preview);
+    setPhotos(photos.filter((_, i) => i !== index));
+  }
+
+  function pickPhotos(files: FileList | null) {
     setMessage(null);
-    if (!file) return clearPhoto();
-    const problem = checkImage(file);
-    if (problem) {
-      clearPhoto();
-      setMessage({ ok: false, text: problem === "type" ? t.photoWrongType : t.photoTooBig });
-      return;
+    setFileKey((k) => k + 1); // so the same file can be picked again later
+    if (!files) return;
+    const added: PickedPhoto[] = [];
+    for (const file of Array.from(files)) {
+      const problem = checkImage(file);
+      if (problem) {
+        setMessage({ ok: false, text: problem === "type" ? t.photoWrongType : t.photoTooBig });
+        continue;
+      }
+      if (photos.length + added.length >= STORY_MAX_PHOTOS) {
+        setMessage({ ok: false, text: fill(t.photoTooMany, { max: STORY_MAX_PHOTOS }) });
+        break;
+      }
+      added.push({ file, preview: URL.createObjectURL(file), alt: "" });
     }
-    setPhoto(file);
-    setPreview(URL.createObjectURL(file));
+    setPhotos([...photos, ...added]);
   }
 
   async function submit(e: React.FormEvent) {
@@ -144,10 +149,11 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     setBusy(true);
     setMessage(null);
 
-    let imagePath: string | null = null;
+    const uploaded: string[] = [];
     try {
-      if (photo) imagePath = await uploadImage(supabase, user.id, photo);
+      for (const p of photos) uploaded.push(await uploadImage(supabase, "story-images", user.id, p.file));
     } catch (err) {
+      await removeImages(supabase, "story-images", uploaded);
       setBusy(false);
       setMessage({ ok: false, text: fill(t.submitFailed, { message: (err as Error).message }) });
       return;
@@ -160,11 +166,11 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
       locale: writtenIn,
       title: title.trim(),
       body: body.trim(),
-      image_path: imagePath,
+      images: uploaded.map((path, i) => ({ path, alt: photos[i].alt.trim() || null })),
       status: "published",
     });
     if (error) {
-      await removeImage(supabase, imagePath); // don't leave an unused file behind
+      await removeImages(supabase, "story-images", uploaded); // don't leave unused files behind
       setBusy(false);
       setMessage({ ok: false, text: fill(t.submitFailed, { message: error.message }) });
       return;
@@ -177,7 +183,7 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     setMessage({ ok: true, text: t.submitted });
     setTitle("");
     setBody("");
-    clearPhoto();
+    clearPhotos();
     void loadMine();
   }
 
@@ -185,7 +191,7 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
     if (!supabase || !window.confirm(t.confirmDelete)) return;
     const { error } = await supabase.from("stories").delete().eq("id", story.id);
     if (error) return;
-    await removeImage(supabase, story.image_path);
+    await removeImages(supabase, "story-images", story.images.map((i) => i.path));
     if (story.status === "published") {
       await refreshPublicContent(["stories"]);
       router.refresh();
@@ -259,22 +265,40 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
               <input
                 key={fileKey}
                 type="file"
+                multiple
                 accept={IMAGE_TYPES.join(",")}
-                onChange={(e) => pickPhoto(e.target.files?.[0])}
+                disabled={photos.length >= STORY_MAX_PHOTOS}
+                onChange={(e) => pickPhotos(e.target.files)}
                 aria-describedby="story-photo-hint"
-                className="mt-1 block w-full text-sm text-muted file:mr-3 file:min-h-10 file:rounded-full file:border-0 file:bg-sand file:px-4 file:text-sm file:font-medium file:text-ink hover:file:bg-brand-50"
+                className="mt-1 block w-full text-sm text-muted file:mr-3 file:min-h-10 file:rounded-full file:border-0 file:bg-sand file:px-4 file:text-sm file:font-medium file:text-ink hover:file:bg-brand-50 disabled:opacity-50"
               />
               <span id="story-photo-hint" className="mt-1 block text-xs text-muted">{t.photoHint}</span>
             </label>
-            {preview && (
-              <div className="mt-3 flex items-start gap-3">
-                {/* A local blob: URL, so a plain <img> rather than next/image. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={preview} alt={t.photoPreview} className="h-24 w-32 rounded-xl object-cover ring-1 ring-line" />
-                <button type="button" onClick={clearPhoto} className="text-sm text-brand-700 hover:underline">
-                  {t.photoRemove}
-                </button>
-              </div>
+            {photos.length > 0 && (
+              <ul className="mt-3 space-y-3">
+                {photos.map((p, i) => (
+                  <li key={p.preview} className="flex items-start gap-3">
+                    {/* A local blob: URL, so a plain <img> rather than next/image. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.preview} alt={fill(t.photoPreview, { number: i + 1 })} className="h-20 w-28 shrink-0 rounded-xl object-cover ring-1 ring-line" />
+                    <div className="min-w-0 flex-1">
+                      <label className="block">
+                        <span className="sr-only">{fill(t.photoAlt, { number: i + 1 })}</span>
+                        <input
+                          maxLength={200}
+                          value={p.alt}
+                          placeholder={t.photoAltPlaceholder}
+                          onChange={(e) => setPhotos(photos.map((q, j) => (j === i ? { ...q, alt: e.target.value } : q)))}
+                          className="block w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink focus:border-brand-500"
+                        />
+                      </label>
+                      <button type="button" onClick={() => removePhoto(i)} className="mt-1 text-sm text-brand-700 hover:underline">
+                        {t.photoRemove}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
@@ -294,9 +318,9 @@ function ComposerAndMine({ locale, places, t }: { locale: Locale; places: Place[
           <ul className="divide-y divide-line">
             {mine.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-3 py-3">
-                {s.image_path && (
+                {s.images[0] && (
                   <div className="relative size-12 shrink-0 overflow-hidden rounded-lg">
-                    <Image src={mediaUrl(s.image_path)} alt="" fill sizes="48px" className="object-cover" />
+                    <Image src={mediaUrl(s.images[0].path, "story-images")} alt="" fill sizes="48px" className="object-cover" />
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
@@ -335,7 +359,7 @@ function ReviewQueue({ places, t }: { places: Place[]; t: Dictionary["stories"] 
     if (!supabase) return { rows: [] as QueueStory[], names: new Map<string, string>() };
     const { data } = await supabase
       .from("stories")
-      .select("id, title, body, kind, locale, status, destination_id, author_id, created_at, image_path")
+      .select("id, title, body, kind, locale, status, destination_id, author_id, created_at, images")
       .eq("status", "in_review")
       .order("created_at");
     const rows = (data as QueueStory[]) ?? [];

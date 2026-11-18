@@ -167,8 +167,16 @@ const story = (title, extra = "") => `insert into public.stories (author_id, des
   values ('${U.student}', ${dest}, 'en', '${title}', 'Go early for the pork-ball soup, the queue gets long by noon.'${extra ? `, '${extra}'` : ""})`;
 await ok("visitor publishes a story directly", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body, status) values ('${U.visitor}', ${dest}, 'en', 'Hi', 'Twenty characters at least here.', 'published')`, affected(1));
 await ok("…anon sees it", "anon", "select 1 from public.stories where title = 'Hi'", rows(1));
-await denied("visitor cannot attach someone else's photo", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body, status, image_path) values ('${U.visitor}', ${dest}, 'en', 'Pic', 'Twenty characters at least here.', 'published', '${U.student}/photo.jpg')`);
-await ok("visitor attaches their own photo", "visitor", `insert into public.stories (author_id, destination_id, locale, title, body, status, image_path) values ('${U.visitor}', ${dest}, 'en', 'Pic', 'Twenty characters at least here.', 'published', '${U.visitor}/photo.jpg')`, affected(1));
+const withPhotos = (images) => `insert into public.stories (author_id, destination_id, locale, title, body, status, images) values ('${U.visitor}', ${dest}, 'en', 'Pic', 'Twenty characters at least here.', 'published', '${JSON.stringify(images)}')`;
+const pic = (owner, ext = "jpg") => `${owner}/11111111-2222-4333-8444-555555555555.${ext}`;
+await denied("visitor cannot attach someone else's photo", "visitor", withPhotos([{ path: pic(U.student) }]));
+await denied("photo must be jpg/png/webp", "visitor", withPhotos([{ path: pic(U.visitor, "gif") }]));
+await denied("at most 3 photos", "visitor", withPhotos([1, 2, 3, 4].map(() => ({ path: pic(U.visitor) }))));
+await ok("visitor attaches 2 of their own photos, extra keys dropped", "visitor",
+  withPhotos([{ path: pic(U.visitor), alt: "Soup", evil: "x" }, { path: pic(U.visitor, "png") }]), affected(1));
+await ok("…stored as {path, alt} only", "super", `select 1 from public.stories where title = 'Pic' and images = '${JSON.stringify([{ alt: "Soup", path: pic(U.visitor) }, { alt: null, path: pic(U.visitor, "png") }])}'::jsonb`, rows(1));
+await ok("visitor uploads to the story-images bucket", "visitor", `insert into storage.objects (bucket_id, name) values ('story-images', '${pic(U.visitor)}')`, affected(1));
+await denied("…but not into someone else's folder", "visitor", `insert into storage.objects (bucket_id, name) values ('story-images', '${pic(U.student)}')`);
 await ok("visitor deletes their own stories", "visitor", `delete from public.stories where author_id = '${U.visitor}'`, affected(2));
 await ok("student submits a story (waits for review)", "student", story("Best breakfast near the temple"), affected(1));
 await ok("…its status is in_review", "super", "select 1 from public.stories where status = 'in_review'", rows(1));
@@ -304,10 +312,10 @@ await ok("…no comments left", "super", "select * from public.story_comments", 
 console.log("\nCommunity spots");
 await denied("anon cannot add a spot", "anon", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'en')`);
 await denied("spot outside Taiwan rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 0, 0, 'en')`);
-await denied("spot with someone else's photo rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'en', null, '${U.student}/photo.jpg')`);
+await denied("spot with someone else's photo rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'en', null, '${U.student}/11111111-2222-4333-8444-555555555555.jpg')`);
 await denied("spot with a disabled language rejected", "visitor", `select public.add_community_spot('X', 'Long enough summary', 'food', 24.8, 120.97, 'vi')`);
 await ok("visitor adds a spot with a photo", "visitor",
-  `select public.add_community_spot('Grandma noodle stall', 'Tiny stall with the best rice noodles.', 'food', 24.80, 120.97, 'en', 'Beimen St', '${U.visitor}/photo.jpg')`, rows(1));
+  `select public.add_community_spot('Grandma noodle stall', 'Tiny stall with the best rice noodles.', 'food', 24.80, 120.97, 'en', 'Beimen St', '${U.visitor}/11111111-2222-4333-8444-555555555555.jpg')`, rows(1));
 const newSpot = "(select destination_id from public.destination_translations where name = 'Grandma noodle stall')";
 await ok("…anon sees the spot, its translation and cover", "anon",
   `select 1 from public.destinations d join public.destination_translations t on t.destination_id = d.id join public.media m on m.id = d.cover_media_id where d.id = ${newSpot}`, rows(1));

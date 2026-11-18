@@ -31,7 +31,10 @@ export function StoryCard({ story, locale, t, saveLabels, isExample = false }: P
   const comments = useStoryComments(story);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const panelId = useId();
-  const photo = story.image ?? story.place.image; // the writer's own photo, else the place's
+  // The writer's own photos, else the place's photo.
+  const photos = story.images.length > 0 ? story.images : story.place.image ? [story.place.image] : [];
+  const [shown, setShown] = useState(0);
+  const photo = photos[Math.min(shown, photos.length - 1)];
 
   function toggleComments() {
     const opening = !commentsOpen;
@@ -50,6 +53,25 @@ export function StoryCard({ story, locale, t, saveLabels, isExample = false }: P
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             className="object-cover"
           />
+          {photos.length > 1 && (
+            <div className="absolute bottom-2 left-2 flex gap-1.5">
+              {photos.map((p, i) => (
+                <button
+                  key={p.src}
+                  type="button"
+                  aria-pressed={i === shown}
+                  aria-label={fill(t.photoShow, { number: i + 1, total: photos.length })}
+                  onClick={() => setShown(i)}
+                  className={cn(
+                    "relative size-11 overflow-hidden rounded-lg ring-2",
+                    i === shown ? "ring-white" : "ring-white/40 opacity-80 hover:opacity-100",
+                  )}
+                >
+                  <Image src={p.src} alt="" fill sizes="44px" className="object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div className="flex flex-1 flex-col p-5">
