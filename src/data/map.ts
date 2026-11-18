@@ -8,7 +8,8 @@ import { getPublicSupabase } from "@/lib/supabase/public-client";
 import type { MapDestination } from "@/types/content";
 import { spots } from "./index";
 
-export type MapData = { source: "supabase" | "sample"; destinations: MapDestination[] };
+/** "error" = Supabase is configured but couldn't be reached (bad key, outage): show no places. */
+export type MapData = { source: "supabase" | "sample" | "error"; destinations: MapDestination[] };
 
 export async function getMapDestinations(locale: Locale): Promise<MapData> {
   "use cache";
@@ -29,7 +30,11 @@ export async function getMapDestinations(locale: Locale): Promise<MapData> {
     .not("latitude", "is", null)
     .overrideTypes<DestinationRow[], { merge: false }>();
 
-  if (error) throw new Error(`Could not load destinations from Supabase: ${error.message}`);
+  // Don't take the whole page (or the build) down if the database is unreachable.
+  if (error) {
+    console.error("Could not load destinations from Supabase:", error.message);
+    return { source: "error", destinations: [] };
+  }
 
   const destinations = (data ?? []).flatMap((row) => toMapDestination(row, locale) ?? []);
   return { source: "supabase", destinations };
