@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/*
+ * FengYou design tokens. Warm and minimal: a soft cream background, warm brown
+ * text, terracotta for actions, and persimmon gold for small highlights.
+ * Text colours meet WCAG AA contrast on both canvas and surface.
+ */
+@theme {
+  --color-brand-50: #fdf3ec;
+  --color-brand-100: #f8e0cf;
+  --color-brand-500: #c9602c;
+  --color-brand-600: #a94d1f;
+  --color-brand-700: #8a3d17;
+  --color-brand-900: #3f1e0e;
+
+  --color-accent-400: #f0b44c;
+  --color-accent-500: #e39a2a;
+
+  --color-ink: #2b211c;
+  --color-muted: #6a5b52;
+  --color-surface: #ffffff;
+  --color-canvas: #fbf7f2;
+  --color-sand: #f3ebe1;
+  --color-line: #ebe1d6;
+
+  --font-sans: var(--font-noto-sans-tc), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-noto-serif-tc), ui-serif, Georgia, serif;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+/* Visible keyboard focus everywhere; mouse clicks don't show the ring. */
+:focus-visible {
+  outline: 3px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Map pin: a rounded square turned 45°, so one corner points at the spot.
+   Used for Leaflet markers and the matching icons in the list. */
+.fy-pin {
+  display: block;
+  box-sizing: border-box;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg) scale(0.75);
+  transform-origin: center;
+  background: var(--color-brand-600);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
+  transition: background-color 0.15s;
+}
+.fy-pin--selected {
+  background: var(--color-accent-500);
+}
+.leaflet-marker-icon:focus-visible .fy-pin {
+  outline: 3px solid var(--color-ink);
+  outline-offset: 2px;
+}
+/* Make the attribution a little easier to read on phones. */
+.leaflet-container .leaflet-control-attribution {
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
