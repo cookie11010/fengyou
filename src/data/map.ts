@@ -12,8 +12,8 @@ export type MapData = { source: "supabase" | "sample"; destinations: MapDestinat
 
 export async function getMapDestinations(locale: Locale): Promise<MapData> {
   "use cache";
-  cacheLife("hours"); // Published places change rarely; refetch at most every hour or so.
-  cacheTag("destinations"); // ...but adding a spot refreshes this right away (see src/app/actions.ts)
+  cacheLife("minutes"); // anyone can add places now, and edits made outside the site (SQL, Studio) show up within a few minutes
+  cacheTag("destinations"); // adding a spot on the site refreshes this at once (see src/app/actions.ts)
 
   const supabase = getPublicSupabase();
   if (!supabase) return { source: "sample", destinations: sampleDestinations(locale) };
