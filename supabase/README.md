@@ -104,7 +104,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
 Restart `npm run dev`. Sign-in emails don't really get sent locally; open the
-mail viewer at http://127.0.0.1:54324 to read the 6-digit code.
+mail viewer at http://127.0.0.1:54324 to read the sign-in code.
 
 ## Giving someone a role
 

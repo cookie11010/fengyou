@@ -1,6 +1,6 @@
 "use client";
 
-// Two steps: email → 6-digit code. Using a code instead of only a magic link
+// Two steps: email → sign-in code (6 to 10 digits, set in Supabase Auth). Using a code instead of only a magic link
 // means sign-in finishes in the same tab, even if the email is opened on
 // another device.
 import { useRouter } from "next/navigation";
