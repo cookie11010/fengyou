@@ -95,7 +95,11 @@
     "submit": "加到地圖",
     "submitting": "新增中…",
     "added": "{name} 已經在地圖上了。",
-    "addFailed": "新增失敗：{message}"
+    "addFailed": "新增失敗：{message}",
+    "originOfficial": "風遊推薦",
+    "originCommunity": "使用者新增",
+    "originNote": "★ 風遊推薦由團隊查證整理；✎ 使用者新增的景點來自網站使用者。",
+    "photoBy": "照片：{author}，{license}"
   },
   "auth": {
     "signIn": "登入",

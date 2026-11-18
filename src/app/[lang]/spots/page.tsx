@@ -38,6 +38,10 @@ export default async function SpotsPage() {
             close: t.close,
             directions: t.directions,
             empty: t.empty,
+            official: t.originOfficial,
+            community: t.originCommunity,
+            photoBy: t.photoBy,
+            originNote: t.originNote,
           }}
         />
       </div>

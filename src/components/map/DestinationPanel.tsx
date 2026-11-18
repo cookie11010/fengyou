@@ -2,12 +2,14 @@
 
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { fill } from "@/lib/format";
 import type { MapDestination } from "@/types/content";
+import { OriginBadge } from "./OriginBadge";
 
 type Props = {
   destination: MapDestination;
   categoryLabel: string;
-  labels: { close: string; directions: string };
+  labels: { close: string; directions: string; official: string; community: string; photoBy: string };
   onClose: () => void;
   action?: ReactNode; // e.g. the "Add to trip" button
 };
@@ -27,7 +29,10 @@ export function DestinationPanel({ destination: d, categoryLabel, labels, onClos
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-brand-600">{categoryLabel}</p>
+            <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-brand-600">
+              {categoryLabel}
+              <OriginBadge origin={d.origin} labels={labels} />
+            </p>
             <h2 className="font-display text-lg font-semibold leading-snug text-ink">{d.name}</h2>
           </div>
           <button
@@ -43,6 +48,17 @@ export function DestinationPanel({ destination: d, categoryLabel, labels, onClos
         </div>
         <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-muted">{d.summary}</p>
         {d.address && <p className="mt-1 text-xs text-muted">{d.address}</p>}
+        {d.image?.credit && (
+          <p className="mt-1 text-[11px] text-muted">
+            {d.image.credit.sourceUrl ? (
+              <a href={d.image.credit.sourceUrl} target="_blank" rel="noopener" className="underline-offset-2 hover:underline">
+                {fill(labels.photoBy, { author: d.image.credit.author, license: d.image.credit.license })}
+              </a>
+            ) : (
+              fill(labels.photoBy, { author: d.image.credit.author, license: d.image.credit.license })
+            )}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
         {action}
         <a

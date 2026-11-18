@@ -8,6 +8,7 @@ import type { Dictionary } from "@/i18n/dictionaries";
 import { cn } from "@/lib/cn";
 import type { MapDestination, SpotCategory } from "@/types/content";
 import { DestinationPanel } from "./DestinationPanel";
+import { OriginBadge } from "./OriginBadge";
 
 // Loaded only in the browser: Leaflet needs `window`.
 const LeafletMap = dynamic(() => import("./LeafletMap"), {
@@ -22,6 +23,10 @@ export type ExplorerLabels = {
   close: string;
   directions: string;
   empty: string;
+  official: string;
+  community: string;
+  photoBy: string;
+  originNote: string;
 };
 
 type Props = {
@@ -82,7 +87,7 @@ export function DestinationExplorer({ locale, saveLabels, destinations, categori
             <DestinationPanel
               destination={selected}
               categoryLabel={categories[selected.category]}
-              labels={{ close: labels.close, directions: labels.directions }}
+              labels={labels}
               onClose={() => setSelectedId(null)}
               action={
                 <SaveToItineraryButton
@@ -102,6 +107,7 @@ export function DestinationExplorer({ locale, saveLabels, destinations, categori
         <h2 id="destination-list-heading" className="font-display text-xl font-semibold text-ink">
           {labels.listHeading}
         </h2>
+        <p className="mt-1 text-xs text-muted">{labels.originNote}</p>
         <ul className="mt-4 space-y-2">
           {destinations.map((d) => {
             const isSelected = d.id === selectedId;
@@ -119,7 +125,10 @@ export function DestinationExplorer({ locale, saveLabels, destinations, categori
                   <span aria-hidden="true" className={cn("fy-pin shrink-0", isSelected && "fy-pin--selected")} style={{ width: 24, height: 24 }} />
                   <span className="min-w-0">
                     <span className="block font-medium text-ink">{d.name}</span>
-                    <span className="block text-xs text-muted">{categories[d.category]}</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                      {categories[d.category]}
+                      <OriginBadge origin={d.origin} labels={labels} />
+                    </span>
                   </span>
                 </button>
               </li>

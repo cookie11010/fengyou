@@ -95,7 +95,11 @@
     "submit": "Add to map",
     "submitting": "Adding…",
     "added": "{name} is on the map now.",
-    "addFailed": "Couldn't add it: {message}"
+    "addFailed": "Couldn't add it: {message}",
+    "originOfficial": "FengYou pick",
+    "originCommunity": "Added by a user",
+    "originNote": "★ FengYou picks are researched by our team. ✎ User spots come from people who use the site.",
+    "photoBy": "Photo: {author}, {license}"
   },
   "auth": {
     "signIn": "Sign in",

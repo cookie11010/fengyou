@@ -7,6 +7,9 @@ export type Localized<T = string> = Record<Locale, T>;
 
 export type SpotCategory = "food" | "temple" | "history" | "market" | "nature" | "family";
 
+/** official = picked by the FengYou team; community = added by a user with "Add a spot". */
+export type SpotOrigin = "official" | "community";
+
 /** Openly licensed photos must credit their author and license. */
 export interface Photo {
   src: string;
@@ -62,10 +65,11 @@ export interface MapDestination {
   id: string;
   slug: string;
   category: SpotCategory;
+  origin: SpotOrigin;
   lat: number;
   lng: number;
   name: string;
   summary: string;
   address?: string;
-  image?: { src: string; alt: string };
+  image?: { src: string; alt: string; credit?: { author: string; license: string; sourceUrl?: string } };
 }

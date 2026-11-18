@@ -322,6 +322,13 @@ await ok("…anon sees the spot, its translation and cover", "anon",
 await ok("…author name is public", "anon", `select 1 from public.author_profiles where id = '${U.visitor}'`, rows(1));
 await ok("…and it can go in a trip", "student2", `select public.add_to_itinerary(${newSpot})`);
 await ok("…and get stories", "student2", `insert into public.stories (author_id, destination_id, locale, title, body, status) values ('${U.student2}', ${newSpot}, 'en', 'Yum', 'Twenty characters at least here.', 'published')`, affected(1));
+await ok("…it is marked as a community spot", "anon", `select 1 from public.destinations where id = ${newSpot} and origin = 'community'`, rows(1));
+await ok("places added by the team default to official", "anon", "select 1 from public.destinations where slug = 'city-god-temple' and origin = 'official'", rows(1));
+await ok("student2 drafts a place", "student2", `insert into public.destinations (slug, category, author_id, origin) values ('my-draft', 'food', '${U.student2}', 'community')`, affected(1));
+await ok("…a contributor changing origin is ignored", "student2", "update public.destinations set origin = 'official' where slug = 'my-draft'", affected(1));
+await ok("…still community", "super", "select 1 from public.destinations where slug = 'my-draft' and origin = 'community'", rows(1));
+await ok("editor can make it official", "editor", "update public.destinations set origin = 'official' where slug = 'my-draft'", affected(1));
+await ok("…now official", "super", "select 1 from public.destinations where slug = 'my-draft' and origin = 'official'", rows(1));
 await ok("visitor cannot edit the published spot (0 rows)", "visitor", `update public.destinations set category = 'temple' where id = ${newSpot}`, affected(0));
 await ok("editor can archive it", "editor", `update public.destinations set status = 'archived' where id = ${newSpot}`, affected(1));
 await ok("…then the public no longer sees it", "anon", `select 1 from public.destinations where id = ${newSpot}`, rows(0));
