@@ -51,7 +51,8 @@ export default async function RootLayout({ children }: LayoutProps<"/[lang]">) {
         <SessionProvider>
           <SkipLink label={dict.a11y.skipToContent} />
           <SiteHeader />
-          <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
+          {/* key: a new language remounts <main>, which replays its fade-in (.fy-page). */}
+          <main key={locale} id="main" tabIndex={-1} className="fy-page flex-1 focus:outline-none">
             {children}
           </main>
           <SiteFooter />

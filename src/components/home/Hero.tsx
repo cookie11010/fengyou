@@ -40,7 +40,7 @@ export function Hero({ locale, photo, t }: HeroProps) {
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-white/90">{t.subtitle}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <ButtonLink href="#destinations">{t.cta}</ButtonLink>
+            <ButtonLink href={`/${locale}/spots`}>{t.cta}</ButtonLink>
             <ButtonLink href="#routes" variant="onDark">
               {t.secondary}
             </ButtonLink>

@@ -7,6 +7,7 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo } from "react";
 import { divIcon, latLngBounds } from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { useFreshMountKey } from "@/lib/use-fresh-mount-key";
 import { HSINCHU_CENTER, tileLayer } from "@/lib/map-config";
 import type { MapDestination } from "@/types/content";
 
@@ -48,6 +49,7 @@ function FlyToSelected({ destination }: { destination?: MapDestination }) {
 }
 
 export default function LeafletMap({ destinations, selectedId, onSelect, markerHint }: LeafletMapProps) {
+  const mapKey = useFreshMountKey();
   const icons = useMemo(() => ({ normal: pinIcon(false), selected: pinIcon(true) }), []);
 
   // Start zoomed to fit every marker, with some breathing room.
@@ -58,6 +60,7 @@ export default function LeafletMap({ destinations, selectedId, onSelect, markerH
 
   return (
     <MapContainer
+      key={mapKey} // a fresh map each time the page is shown again (see useFreshMountKey)
       bounds={bounds}
       center={bounds ? undefined : destinations[0] ? [destinations[0].lat, destinations[0].lng] : HSINCHU_CENTER}
       zoom={bounds ? undefined : 15}

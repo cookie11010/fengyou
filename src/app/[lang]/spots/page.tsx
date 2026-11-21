@@ -42,6 +42,7 @@ export default async function SpotsPage() {
             community: t.originCommunity,
             photoBy: t.photoBy,
             originNote: t.originNote,
+            details: t.details,
           }}
         />
       </div>

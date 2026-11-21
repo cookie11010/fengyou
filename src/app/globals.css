@@ -79,3 +79,59 @@ html {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Motion. Small and quick, and switched off for people who ask their device
+   to reduce motion.
+   --------------------------------------------------------------------------- */
+
+/* Page content fades in when it first appears and after switching language. */
+@keyframes fy-page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.fy-page {
+  animation: fy-page-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+/* Set by the language switcher just before it changes language. */
+html.fy-lang-leaving .fy-page {
+  animation: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease-in, transform 0.18s ease-in;
+}
+
+/* Panels, menus and new posts "pop" in. */
+@keyframes fy-pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.fy-pop {
+  animation: fy-pop-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Cards lift a little under the pointer. */
+.fy-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.fy-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px -14px rgb(63 30 14 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-page,
+  .fy-pop {
+    animation: none;
+  }
+  html.fy-lang-leaving .fy-page {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .fy-lift,
+  .fy-lift:hover {
+    transform: none;
+    transition: none;
+  }
+}

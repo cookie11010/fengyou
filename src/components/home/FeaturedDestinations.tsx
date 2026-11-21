@@ -12,13 +12,15 @@ type Props = {
   t: Dictionary["home"]["featured"];
   categories: Dictionary["categories"];
   mapCta: string;
+  /** Slugs of places that have their own page (slug -> id). */
+  linkable: Record<string, string>;
 };
 
 /**
  * Phones: a swipeable row that shows part of the next card, so people can
  * tell there's more. Tablet and up: a normal grid.
  */
-export function FeaturedDestinations({ locale, spots, t, categories, mapCta }: Props) {
+export function FeaturedDestinations({ locale, spots, t, categories, mapCta, linkable }: Props) {
   return (
     <section id="destinations" aria-labelledby="destinations-title" className="scroll-mt-20 py-16 sm:py-24">
       <Container className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -38,7 +40,13 @@ export function FeaturedDestinations({ locale, spots, t, categories, mapCta }: P
         >
           {spots.map((spot) => (
             <li key={spot.slug} className="w-[80%] shrink-0 snap-start sm:w-auto">
-              <DestinationCard spot={spot} locale={locale} categoryLabel={categories[spot.category]} />
+              <DestinationCard
+                spot={spot}
+                locale={locale}
+                categoryLabel={categories[spot.category]}
+                href={linkable[spot.slug] ? `/${locale}/spots/${spot.slug}` : undefined}
+                moreLabel={t.more}
+              />
             </li>
           ))}
         </ul>

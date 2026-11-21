@@ -27,6 +27,7 @@ export type ExplorerLabels = {
   community: string;
   photoBy: string;
   originNote: string;
+  details: string;
 };
 
 type Props = {
@@ -88,6 +89,7 @@ export function DestinationExplorer({ locale, saveLabels, destinations, categori
               destination={selected}
               categoryLabel={categories[selected.category]}
               labels={labels}
+              href={`/${locale}/spots/${selected.slug}`}
               onClose={() => setSelectedId(null)}
               action={
                 <SaveToItineraryButton
@@ -95,6 +97,7 @@ export function DestinationExplorer({ locale, saveLabels, destinations, categori
                   placeName={selected.name}
                   locale={locale}
                   t={saveLabels}
+                  openUp
                   className="min-h-9 px-3"
                 />
               }

@@ -333,5 +333,81 @@ await ok("visitor cannot edit the published spot (0 rows)", "visitor", `update p
 await ok("editor can archive it", "editor", `update public.destinations set status = 'archived' where id = ${newSpot}`, affected(1));
 await ok("…then the public no longer sees it", "anon", `select 1 from public.destinations where id = ${newSpot}`, rows(0));
 
+console.log("\nSeveral trips");
+const temple = (await as("super", "select id from public.destinations where slug='city-god-temple'")).rows[0].id;
+const gateId = (await as("super", "select id from public.destinations where slug='yingxi-gate'")).rows[0].id;
+await denied("anon cannot make a trip", "anon", "select public.create_trip('x')");
+const tripA = (await ok("visitor makes a second trip with dates and a route's places", "visitor",
+  `select public.create_trip('Weekend in Hsinchu', '2026-12-19', '2026-12-20', array['${gateId}', '${beimen}', '${temple}', '${gateId}']::uuid[]) as id`,
+  rows(1)))?.rows[0].id;
+await ok("…unpublished place and repeat skipped, order kept", "visitor",
+  `select array_agg(destination_id order by position) = array['${gateId}', '${temple}']::uuid[] as same from public.itinerary_items where itinerary_id = '${tripA}'`,
+  (r) => r.rows[0].same === true);
+await ok("…visitor now has 2 trips", "visitor", "select id from public.itineraries", rows(2));
+await ok("…trip_date follows start_date for the old site", "visitor",
+  `select 1 from public.itineraries where id = '${tripA}' and trip_date = '2026-12-19' and end_date = '2026-12-20'`, rows(1));
+await denied("end date before start date is rejected", "visitor", "select public.create_trip('Backwards', '2026-12-20', '2026-12-19')");
+await ok("blank name falls back to the default", "visitor", "select public.create_trip('   ') as id", rows(1));
+await ok("…called 'My Hsinchu trip'", "visitor", "select 1 from public.itineraries where title = 'My Hsinchu trip'", (r) => r.rows.length >= 1);
+await ok("adding places that are already there does nothing", "visitor",
+  `select public.add_places_to_trip('${tripA}', array['${temple}']::uuid[]) as n`, (r) => r.rows[0].n === 2);
+await denied("student cannot add to the visitor's trip", "student",
+  `select public.add_places_to_trip('${tripA}', array['${temple}']::uuid[])`);
+await denied("student cannot save over the visitor's trip", "student",
+  `select public.save_trip('${tripA}', 'hacked', null, null, '[]')`);
+await ok("…visitor's trip unchanged", "super", `select 1 from public.itineraries where id = '${tripA}' and title = 'Weekend in Hsinchu'`, rows(1));
+await ok("visitor saves the trip: new name, dates, order, note", "visitor",
+  `select public.save_trip('${tripA}', 'Food weekend', '2026-12-26', '2026-12-27', '[{"destination_id":"${temple}","note":"Lunch"},{"destination_id":"${gateId}"}]') as n`,
+  (r) => r.rows[0].n === 2);
+await ok("…stored", "visitor",
+  `select 1 from public.itinerary_items i join public.itineraries t on t.id = i.itinerary_id
+   where t.id = '${tripA}' and t.title = 'Food weekend' and t.start_date = '2026-12-26' and t.end_date = '2026-12-27'
+     and i.destination_id = '${temple}' and i.position = 1 and i.note = 'Lunch'`, rows(1));
+await denied("save_trip rejects end before start", "visitor", `select public.save_trip('${tripA}', 'x', '2026-12-27', '2026-12-26', '[]')`);
+await ok("the old add_to_itinerary still works (adds to the latest trip)", "visitor", `select public.add_to_itinerary('${gateId}') as n`, rows(1));
+await ok("student cannot delete the visitor's trip (0 rows)", "student", `delete from public.itineraries where id = '${tripA}'`, affected(0));
+await ok("visitor deletes a trip", "visitor", `delete from public.itineraries where id = '${tripA}'`, affected(1));
+await ok("…its stops are gone too", "super", `select 1 from public.itinerary_items where itinerary_id = '${tripA}'`, rows(0));
+await ok("fill student2 up to 30 trips", "super",
+  `insert into public.itineraries (owner_id, title) select '${U.student2}', 'Trip ' || g from generate_series(1, 30 - (select count(*) from public.itineraries where owner_id = '${U.student2}')) g`);
+await denied("a 31st trip is refused", "student2", "select public.create_trip('One more')");
+
+console.log("\nPlace comments and food tips");
+const post = (who, kind, dish, body, place = temple) =>
+  `insert into public.place_posts (destination_id, author_id, kind, dish, body) values ('${place}', '${U[who]}', '${kind}', ${dish === null ? "null" : `'${dish}'`}, ${body === null ? "null" : `'${body}'`})`;
+await denied("anon cannot post", "anon", post("visitor", "comment", null, "Hi"));
+await ok("visitor comments on a place", "visitor", post("visitor", "comment", null, "Is it open on Mondays?"), affected(1));
+await ok("student recommends a dish with a note", "student", post("student", "food", "Pork-ball soup", "NT$60 at the stall by the gate"), affected(1));
+await ok("student2 recommends a dish without a note", "student2", post("student2", "food", "Rice noodles", null), affected(1));
+await denied("a food tip needs a dish", "student", post("student", "food", null, "Tasty"));
+await denied("a comment cannot have a dish", "student", post("student", "comment", "Soup", "Hi"));
+await denied("a comment needs text", "student", post("student", "comment", null, null));
+await denied("blank comment rejected", "visitor", post("visitor", "comment", null, "   "));
+await denied("comment over 1000 characters rejected", "visitor", post("visitor", "comment", null, "a".repeat(1001)));
+await denied("food note over 300 characters rejected", "visitor", post("visitor", "food", "Soup", "a".repeat(301)));
+await denied("visitor cannot post as student", "visitor", post("student", "comment", null, "Fake"));
+await denied("cannot post on an unpublished place", "visitor", post("visitor", "comment", null, "Hi", beimen));
+await denied("cannot post already hidden", "visitor",
+  `insert into public.place_posts (destination_id, author_id, kind, body, status) values ('${temple}', '${U.visitor}', 'comment', 'x', 'hidden')`);
+await denied("cannot backdate a post", "visitor",
+  `insert into public.place_posts (destination_id, author_id, kind, body, created_at) values ('${temple}', '${U.visitor}', 'comment', 'x', '2001-01-01')`);
+await ok("anon reads all 3 posts", "anon", "select * from public.place_posts", rows(3));
+await ok("anon reads the 2 food tips", "anon", "select * from public.place_posts where kind = 'food'", rows(2));
+await ok("…poster names are public", "anon", `select 1 from public.author_profiles where id in ('${U.visitor}', '${U.student2}')`, rows(2));
+await denied("visitor cannot edit their post's text", "visitor", `update public.place_posts set body = 'edited' where author_id = '${U.visitor}'`);
+await ok("visitor cannot hide someone else's post (0 rows)", "visitor", `update public.place_posts set status = 'hidden' where author_id = '${U.student}'`, affected(0));
+await ok("editor hides the food tip", "editor", `update public.place_posts set status = 'hidden' where author_id = '${U.student}'`, affected(1));
+await ok("…hidden_by records the editor", "super", `select 1 from public.place_posts where hidden_by = '${U.editor}'`, rows(1));
+await ok("…anon now sees 2 posts", "anon", "select * from public.place_posts", rows(2));
+await ok("…editor still sees 3", "editor", "select * from public.place_posts", rows(3));
+await ok("student2 cannot delete the visitor's post (0 rows)", "student2", `delete from public.place_posts where author_id = '${U.visitor}'`, affected(0));
+await ok("visitor deletes their own post", "visitor", `delete from public.place_posts where author_id = '${U.visitor}'`, affected(1));
+await ok("editor deletes any post", "editor", `delete from public.place_posts where author_id = '${U.student2}'`, affected(1));
+await ok("30 posts in an hour are allowed", "super",
+  `insert into public.place_posts (destination_id, author_id, kind, body) select '${temple}', '${U.visitor}', 'comment', 'Post ' || g from generate_series(1, 30) g`);
+await denied("…the 31st is refused", "visitor", post("visitor", "comment", null, "One more"));
+await ok("editor archives the place", "editor", `update public.destinations set status = 'archived' where id = '${temple}'`, affected(1));
+await ok("…its posts are no longer public", "anon", "select * from public.place_posts", rows(0));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

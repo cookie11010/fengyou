@@ -66,8 +66,8 @@ export const routes: Route[] = [
     durationHours: 3,
     stops: [
       { name: { "zh-TW": "新竹都城隍廟", en: "City God Temple" }, spot: "city-god-temple" },
-      { name: { "zh-TW": "北門街", en: "Beimen Street" } },
-      { name: { "zh-TW": "東門市場", en: "East Gate Market" } },
+      { name: { "zh-TW": "長和宮與北門街", en: "Changhe Temple & Beimen Street" }, spot: "changhe-temple-beimen-street" },
+      { name: { "zh-TW": "東門市場", en: "East Gate Market" }, spot: "east-gate-market" },
     ],
   },
   {
@@ -78,7 +78,7 @@ export const routes: Route[] = [
     stops: [
       { name: { "zh-TW": "迎曦門", en: "Yingxi Gate" }, spot: "yingxi-gate" },
       { name: { "zh-TW": "護城河親水公園", en: "Moat Park" }, spot: "moat-park" },
-      { name: { "zh-TW": "新竹州廳", en: "Former Hsinchu Prefecture Hall" } },
+      { name: { "zh-TW": "新竹州廳", en: "Former Hsinchu Prefecture Hall" }, spot: "prefecture-hall" },
     ],
   },
   {
@@ -87,9 +87,9 @@ export const routes: Route[] = [
     theme: { "zh-TW": "親子・綠地", en: "Family & green space" },
     durationHours: 3,
     stops: [
-      { name: { "zh-TW": "新竹公園", en: "Hsinchu Park" } },
+      { name: { "zh-TW": "新竹公園", en: "Hsinchu Park" }, spot: "hsinchu-park" },
       { name: { "zh-TW": "新竹市立動物園", en: "Hsinchu Zoo" }, spot: "hsinchu-zoo" },
-      { name: { "zh-TW": "玻璃工藝博物館", en: "Glass Museum" } },
+      { name: { "zh-TW": "玻璃工藝博物館", en: "Glass Museum" }, spot: "glass-museum" },
     ],
   },
 ];

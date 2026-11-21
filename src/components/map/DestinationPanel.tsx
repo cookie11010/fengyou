@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { fill } from "@/lib/format";
 import type { MapDestination } from "@/types/content";
@@ -9,18 +10,20 @@ import { OriginBadge } from "./OriginBadge";
 type Props = {
   destination: MapDestination;
   categoryLabel: string;
-  labels: { close: string; directions: string; official: string; community: string; photoBy: string };
+  labels: { close: string; directions: string; official: string; community: string; photoBy: string; details: string };
+  /** The place's own page (description, food tips, discussion). */
+  href: string;
   onClose: () => void;
   action?: ReactNode; // e.g. the "Add to trip" button
 };
 
 /** Details of the selected place, laid over the bottom of the map. */
-export function DestinationPanel({ destination: d, categoryLabel, labels, onClose, action }: Props) {
+export function DestinationPanel({ destination: d, categoryLabel, labels, href, onClose, action }: Props) {
   // Opens Google Maps (app on phones) with walking/transit directions. No API key needed.
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}`;
 
   return (
-    <article className="flex gap-3 rounded-2xl bg-surface p-3 shadow-lg ring-1 ring-line sm:gap-4 sm:p-4">
+    <article className="fy-pop flex gap-3 rounded-2xl bg-surface p-3 shadow-lg ring-1 ring-line sm:gap-4 sm:p-4">
       {d.image && (
         <div className="relative size-24 shrink-0 overflow-hidden rounded-xl sm:size-28">
           <Image src={d.image.src} alt={d.image.alt} fill sizes="112px" className="object-cover" />
@@ -33,7 +36,9 @@ export function DestinationPanel({ destination: d, categoryLabel, labels, onClos
               {categoryLabel}
               <OriginBadge origin={d.origin} labels={labels} />
             </p>
-            <h2 className="font-display text-lg font-semibold leading-snug text-ink">{d.name}</h2>
+            <h2 className="font-display text-lg font-semibold leading-snug text-ink">
+              <Link href={href} className="underline-offset-2 hover:text-brand-700 hover:underline">{d.name}</Link>
+            </h2>
           </div>
           <button
             type="button"
@@ -61,6 +66,10 @@ export function DestinationPanel({ destination: d, categoryLabel, labels, onClos
         )}
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
         {action}
+        <Link href={href} className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 underline-offset-2 hover:underline">
+          {labels.details}
+          <span aria-hidden="true">→</span>
+        </Link>
         <a
           href={directionsUrl}
           target="_blank"

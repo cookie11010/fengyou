@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo } from "react";
 import { divIcon } from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { useFreshMountKey } from "@/lib/use-fresh-mount-key";
 import { HSINCHU_CENTER, tileLayer } from "@/lib/map-config";
 
 type Point = { lat: number; lng: number };
@@ -26,6 +27,7 @@ function FollowPin({ value }: { value: Point | null }) {
 }
 
 export default function LocationPicker({ value, onChange }: Props) {
+  const mapKey = useFreshMountKey();
   const icon = useMemo(
     () =>
       divIcon({
@@ -39,6 +41,7 @@ export default function LocationPicker({ value, onChange }: Props) {
 
   return (
     <MapContainer
+      key={mapKey} // a fresh map each time the page is shown again (see useFreshMountKey)
       center={value ? [value.lat, value.lng] : HSINCHU_CENTER}
       zoom={15}
       scrollWheelZoom={false}
